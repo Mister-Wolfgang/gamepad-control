@@ -5,9 +5,8 @@ export type PadStatus = {
   connected: boolean
   last: string
   error: string
-  // Suggestions du modèle d'après la session, et file d'actions à lancer une à une
+  // Suggestions du modèle d'après la session ; ABXY en envoient une
   suggestions: string[]
-  queue: string[]
 }
 
 declare module 'claude-code' {

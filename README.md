@@ -8,21 +8,18 @@ Mod pour Claude Code qui pilote une session à la manette et affiche les touches
 
 ## Touches
 
-Le panneau tourne autour des suggestions. Back demande quatre suggestions d'après la session en cours ; A, B, X et Y en choisissent une chacune.
+Le panneau tourne autour des suggestions. Back demande quatre suggestions d'après la session en cours ; A, B, X et Y envoient directement celle qui correspond.
 
 | Touche | Action |
 | :- | :- |
-| Back | Demande des suggestions à la session (`$.model.fork`) |
-| A / B / X / Y | Ajoute la suggestion correspondante à la file |
-| LB + A / B / X / Y | Envoie la suggestion tout de suite |
+| Back | Demande quatre suggestions à la session (`$.model.fork`) |
+| A / B / X / Y | Envoie directement la suggestion correspondante |
 | Start | Envoie le brouillon de la zone de saisie |
 | LB + Start | Interrompt le tour en cours |
-| LB + Back | Lance le premier élément de la file |
 | RB (seul, relâché) | Envoie « Continue. » |
-| RB + Start | Vide la file |
 | LB (seul, relâché) | Vide le brouillon |
 
-Les modificateurs LB et RB ne déclenchent leur action seule qu'au relâchement, et seulement si aucune combinaison n'a été faite pendant qu'ils étaient tenus.
+LB et RB ne déclenchent leur action seule qu'au relâchement, et seulement si aucune combinaison n'a été faite pendant qu'ils étaient tenus.
 
 **Coût** : Back envoie le transcript de la session au modèle (`$.model.fork`). Chaque appel consomme des tokens, sur le modèle de la session.
 

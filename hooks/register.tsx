@@ -14,21 +14,17 @@ const status = atom({ plugin: 'gamepad-control', key: 'status' } as const, {
   last: '',
   error: '',
   suggestions: [],
-  queue: [],
 } as PadStatus)
 
 type Action =
-  | 'pick'        // ajoute la suggestion à la file
-  | 'runNow'      // envoie la suggestion tout de suite
-  | 'runNext'     // envoie le premier de la file
-  | 'clearQueue'
-  | 'send'        // envoie le brouillon
+  | 'sendSuggestion' // envoie la suggestion n tout de suite
+  | 'send'           // envoie le brouillon
   | 'interrupt'
-  | 'suggest'     // demande trois ou quatre suggestions à la session
-  | 'continue'    // envoie « Continue. »
+  | 'suggest'        // demande quatre suggestions à la session
+  | 'continue'       // envoie « Continue. »
   | 'clearDraft'
 
-// Boutons XInput : ABXY pour les suggestions, LB et RB en modificateurs
+// Boutons XInput : ABXY pour les suggestions, LB en modificateur (interrompre), RB pour « Continue. »
 const SLOTS = ['A', 'B', 'X', 'Y'] as const
 const MODIFIERS = ['LB', 'RB'] as const
 
@@ -58,32 +54,16 @@ const FORK_REASONS: Record<string, string> = {
 
 // Identifiant du tour en cours, pour que LB+Start puisse l'interrompre
 let turnId: string | undefined
-// Boutons tenus en ce moment, et modificateurs ayant déjà servi à une combinaison
+// Modificateurs tenus, et modificateurs ayant déjà servi à une combinaison
 const held = new Set<string>()
 const combined = new Set<string>()
 
 async function runAction($: EngineInterface, action: Action, index = 0) {
-  if (action === 'pick' || action === 'runNow') {
+  if (action === 'sendSuggestion') {
     const s = await read($, status)
     const item = s.suggestions[index]
     if (item === undefined) return
-    if (action === 'pick') {
-      await update($, status, st => ({ ...st, queue: [...st.queue, item] }))
-    } else {
-      await $.prompt.submit({ text: item })
-    }
-    return
-  }
-  if (action === 'runNext') {
-    const s = await read($, status)
-    const [next, ...rest] = s.queue
-    if (next === undefined) return
-    await update($, status, st => ({ ...st, queue: rest }))
-    await $.prompt.submit({ text: next })
-    return
-  }
-  if (action === 'clearQueue') {
-    await update($, status, st => ({ ...st, queue: [] }))
+    await $.prompt.submit({ text: item })
     return
   }
   if (action === 'send') {
@@ -117,21 +97,15 @@ async function runAction($: EngineInterface, action: Action, index = 0) {
 // Action d'un bouton pressé seul (sans modificateur)
 function plainDown(name: string): { action: Action; index?: number } | undefined {
   const slot = SLOTS.indexOf(name as (typeof SLOTS)[number])
-  if (slot !== -1) return { action: 'pick', index: slot }
+  if (slot !== -1) return { action: 'sendSuggestion', index: slot }
   if (name === 'Start') return { action: 'send' }
   if (name === 'Back') return { action: 'suggest' }
   return undefined
 }
 
-// Action d'un bouton pressé pendant qu'un modificateur (LB ou RB) est tenu
-function comboDown(modifier: string, name: string): { action: Action; index?: number } | undefined {
-  const slot = SLOTS.indexOf(name as (typeof SLOTS)[number])
-  if (modifier === 'LB') {
-    if (slot !== -1) return { action: 'runNow', index: slot }
-    if (name === 'Start') return { action: 'interrupt' }
-    if (name === 'Back') return { action: 'runNext' }
-  }
-  if (modifier === 'RB' && name === 'Start') return { action: 'clearQueue' }
+// Action d'un bouton pressé pendant qu'un modificateur est tenu
+function comboDown(modifier: string, name: string): { action: Action } | undefined {
+  if (modifier === 'LB' && name === 'Start') return { action: 'interrupt' }
   return undefined
 }
 
@@ -144,7 +118,7 @@ async function onDown($: EngineInterface, name: string) {
     const combo = comboDown(modifier, name)
     if (combo) {
       combined.add(modifier)
-      await runAction($, combo.action, combo.index)
+      await runAction($, combo.action)
       return
     }
   }
@@ -274,8 +248,7 @@ export const register: Register = on => {
                 <Box flexGrow={1}>
                   <Text dimColor={item === undefined}>{item ?? '—'}</Text>
                 </Box>
-                {item !== undefined && <Button onPress={() => runAction($, 'pick', i)}>+ File</Button>}
-                {item !== undefined && <Button onPress={() => runAction($, 'runNow', i)}>▶ Lancer</Button>}
+                {item !== undefined && <Button onPress={() => runAction($, 'sendSuggestion', i)}>▶ Envoyer</Button>}
               </Box>
             )
           })}
@@ -284,22 +257,9 @@ export const register: Register = on => {
           </Box>
         </Box>
 
-        <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
-          <Text bold>File ({s.queue.length})</Text>
-          {s.queue.length === 0 && <Text dimColor>Vide.</Text>}
-          {s.queue.map((item, i) => (
-            <Text key={i}>{i + 1}. {item}</Text>
-          ))}
-          {s.queue.length > 0 && (
-            <Box flexDirection="row" marginTop={1}>
-              <Button onPress={() => runAction($, 'runNext')}>➜ Lancer le suivant (LB+Back)</Button>
-            </Box>
-          )}
-        </Box>
-
         <Box flexDirection="column">
-          <Text dimColor>ABXY ajouter · LB+ABXY lancer · Start envoyer · LB+Start interrompre</Text>
-          <Text dimColor>Back suggérer · LB+Back lancer la file · RB Continue. · RB+Start vider la file · LB vider le brouillon</Text>
+          <Text dimColor>ABXY envoyer la suggestion · Back suggérer · Start envoyer le brouillon</Text>
+          <Text dimColor>LB+Start interrompre · RB « Continue. » · LB seul vider le brouillon</Text>
         </Box>
       </Box>
     )
