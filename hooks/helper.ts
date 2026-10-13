@@ -3,6 +3,7 @@
 // Le script reste en ASCII : il est passé en -EncodedCommand (UTF-16LE, base64).
 export const HELPER_SCRIPT = `
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $out = [Console]::Out
 

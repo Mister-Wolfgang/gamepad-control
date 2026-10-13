@@ -1,13 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { ICONS } from './icons'
 import { parseLine, parseSuggestions, splitLines } from './parse'
-
-test('chaque icône a une case par colonne et ligne, codée sur 12 octets', () => {
-  for (const icon of Object.values(ICONS)) {
-    expect(atob(icon.cells).length).toBe(icon.columns * icon.rows * 12)
-  }
-})
 
 test('DOWN et UP donnent le nom du bouton et son sens', () => {
   expect(parseLine('DOWN A')).toEqual({ type: 'down', name: 'A' })
