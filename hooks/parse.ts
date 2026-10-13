@@ -49,6 +49,17 @@ export function parseLine(line: string): PadEvent | undefined {
   }
 }
 
+// Lit la réponse du modèle : une suggestion par ligne commençant par « - », trois au plus
+export function parseSuggestions(text: string): string[] {
+  return text
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.startsWith('- '))
+    .map(line => line.slice(2).trim())
+    .filter(line => line !== '')
+    .slice(0, 3)
+}
+
 // Découpe un flux de morceaux en lignes complètes ; le reste attend le morceau suivant
 export function splitLines(buffer: string): { lines: string[]; rest: string } {
   const parts = buffer.split('\n')

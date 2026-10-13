@@ -1,6 +1,16 @@
 import { expect, test } from 'claude-code/testing'
 
-import { parseLine, splitLines } from './parse'
+import { parseLine, parseSuggestions, splitLines } from './parse'
+
+test('parseSuggestions garde les lignes à puce, trois au plus', () => {
+  const reply = 'Voici :\n- relire le diff\n- lancer les tests\n\n- écrire le README\n- une quatrième\n'
+  expect(parseSuggestions(reply)).toEqual(['relire le diff', 'lancer les tests', 'écrire le README'])
+})
+
+test('parseSuggestions ignore le texte sans puce', () => {
+  expect(parseSuggestions('Rien à proposer.')).toEqual([])
+  expect(parseSuggestions('- \n-  \n')).toEqual([])
+})
 
 test('BTN donne le nom du bouton', () => {
   expect(parseLine('BTN A')).toEqual({ type: 'button', name: 'A' })

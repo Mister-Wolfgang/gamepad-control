@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { PadStatus } from '../types'
 import { encodedCommand, HELPER_SCRIPT } from './helper'
-import { parseLine, splitLines, type PadEvent, type PadKind } from './parse'
+import { parseLine, parseSuggestions, splitLines, type PadEvent, type PadKind } from './parse'
 
 const PANE = 'gamepad-control'
 
@@ -13,14 +13,20 @@ const status = atom({ plugin: 'gamepad-control', key: 'status' } as const, {
   connected: false,
   last: '',
   error: '',
+  suggestions: [],
+  queue: [],
 } as PadStatus)
 
+type Action = 'send' | 'interrupt' | 'continue' | 'clear' | 'suggest' | 'accept' | 'runNext'
+
 // Touches XInput -> action de session
-const ACTIONS: Record<string, 'send' | 'interrupt' | 'continue' | 'clear'> = {
+const ACTIONS: Record<string, Action> = {
   A: 'send',
   B: 'interrupt',
   X: 'continue',
   Y: 'clear',
+  Start: 'suggest',
+  Back: 'runNext',
 }
 
 const LABELS: Record<string, string> = {
@@ -28,6 +34,8 @@ const LABELS: Record<string, string> = {
   interrupt: 'interrompre le tour',
   continue: 'envoyer « Continue. »',
   clear: 'vider le brouillon',
+  suggest: 'suggérer d’après la session',
+  runNext: 'lancer le premier de la file',
 }
 
 const KIND_LABELS: Record<PadKind, string> = {
@@ -37,10 +45,16 @@ const KIND_LABELS: Record<PadKind, string> = {
   unknown: 'inconnue',
 }
 
+// Demande au modèle, dans la session en cours, trois actions possibles pour la suite
+const SUGGEST_PROMPT =
+  'En t’appuyant sur cette session, propose jusqu’à trois actions courtes et concrètes que ' +
+  'l’utilisateur pourrait demander ensuite. Réponds uniquement par une liste : une action par ligne, ' +
+  'chaque ligne commençant par « - ».'
+
 // Identifiant du tour en cours, pour que B puisse l'interrompre
 let turnId: string | undefined
 
-async function runAction($: EngineInterface, action: 'send' | 'interrupt' | 'continue' | 'clear') {
+async function runAction($: EngineInterface, action: Action, index = 0) {
   if (action === 'send') {
     const { text } = await $.prompt.read()
     if (text.trim() === '') return
@@ -54,6 +68,31 @@ async function runAction($: EngineInterface, action: 'send' | 'interrupt' | 'con
   }
   if (action === 'continue') {
     await $.prompt.submit({ text: 'Continue.' })
+    return
+  }
+  if (action === 'suggest') {
+    const reply = await $.model.fork({ prompt: SUGGEST_PROMPT })
+    if (!reply.isAnswered) {
+      await update($, status, s => ({ ...s, error: 'suggestions indisponibles : ' + reply.reason }))
+      return
+    }
+    const suggestions = parseSuggestions(reply.text)
+    await update($, status, s => ({ ...s, suggestions, error: '' }))
+    return
+  }
+  if (action === 'accept') {
+    const s = await read($, status)
+    const item = s.suggestions[index]
+    if (item === undefined) return
+    await update($, status, st => ({ ...st, queue: [...st.queue, item] }))
+    return
+  }
+  if (action === 'runNext') {
+    const s = await read($, status)
+    const [next, ...rest] = s.queue
+    if (next === undefined) return
+    await update($, status, st => ({ ...st, queue: rest }))
+    await $.prompt.submit({ text: next })
     return
   }
   await $.prompt.fill({ text: '', mode: 'replace' })
@@ -154,16 +193,34 @@ export const register: Register = on => {
         ))}
         {s.error !== '' && <Text>{s.error}</Text>}
         <Text bold>Touches</Text>
-        <Text>A  {LABELS.send}</Text>
-        <Text>B  {LABELS.interrupt}</Text>
-        <Text>X  {LABELS.continue}</Text>
-        <Text>Y  {LABELS.clear}</Text>
+        <Text>A  envoyer le brouillon</Text>
+        <Text>B  interrompre le tour</Text>
+        <Text>X  envoyer « Continue. »</Text>
+        <Text>Y  vider le brouillon</Text>
+        <Text>Start  {LABELS.suggest}</Text>
+        <Text>Back  {LABELS.runNext}</Text>
         <Box flexDirection="row">
           <Button onPress={() => runAction($, 'send')}>A envoyer</Button>
           <Button onPress={() => runAction($, 'interrupt')}>B interrompre</Button>
           <Button onPress={() => runAction($, 'continue')}>X continuer</Button>
           <Button onPress={() => runAction($, 'clear')}>Y vider</Button>
         </Box>
+        <Text bold>Suggestions</Text>
+        {s.suggestions.length === 0 && <Text dimColor>Aucune. Appuie sur Start ou sur le bouton ci-dessous.</Text>}
+        {s.suggestions.map((item, i) => (
+          <Box key={i} flexDirection="row">
+            <Text>{item}</Text>
+            <Button onPress={() => runAction($, 'accept', i)}>Ajouter à la file</Button>
+          </Box>
+        ))}
+        <Box flexDirection="row">
+          <Button onPress={() => runAction($, 'suggest')}>Start suggérer</Button>
+          <Button onPress={() => runAction($, 'runNext')}>Back lancer le suivant</Button>
+        </Box>
+        <Text bold>File ({s.queue.length})</Text>
+        {s.queue.map((item, i) => (
+          <Text key={i}>{i + 1}. {item}</Text>
+        ))}
       </Box>
     )
   })

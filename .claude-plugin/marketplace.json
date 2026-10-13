@@ -1,6 +1,9 @@
 {
   "name": "gamepad-control",
   "owner": { "name": "Wolfgang" },
+  "metadata": {
+    "description": "Marketplace du mod gamepad-control pour Claude Code."
+  },
   "plugins": [
     {
       "name": "gamepad-control",
