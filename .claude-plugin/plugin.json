@@ -1,0 +1,9 @@
+{
+  "name": "gamepad-control",
+  "version": "0.1.0",
+  "description": "Pilote une session Claude Code à la manette (XInput) et affiche les touches dans un panneau.",
+  "author": { "name": "Wolfgang" },
+  "license": "MIT",
+  "keywords": ["mod", "gamepad", "controller", "xinput", "windows"],
+  "types": "./types/index.d.ts"
+}

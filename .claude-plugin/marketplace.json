@@ -1,0 +1,11 @@
+{
+  "name": "gamepad-control",
+  "owner": { "name": "Wolfgang" },
+  "plugins": [
+    {
+      "name": "gamepad-control",
+      "source": "./",
+      "description": "Pilote une session Claude Code à la manette (XInput) et affiche les touches dans un panneau."
+    }
+  ]
+}
