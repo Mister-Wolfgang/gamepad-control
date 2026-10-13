@@ -27,7 +27,7 @@ Mod pour Claude Code qui pilote une session à la manette et affiche les touches
 Dans Claude Code :
 
 ```
-/plugin marketplace add <propriétaire>/gamepad-control
+/plugin marketplace add Mister-Wolfgang/gamepad-control
 /plugin install gamepad-control@gamepad-control
 ```
 
