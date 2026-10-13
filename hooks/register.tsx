@@ -51,6 +51,14 @@ const SUGGEST_PROMPT =
   'l’utilisateur pourrait demander ensuite. Réponds uniquement par une liste : une action par ligne, ' +
   'chaque ligne commençant par « - ».'
 
+// Pourquoi $.model.fork ne répond pas, dit en clair dans le panneau
+const FORK_REASONS: Record<string, string> = {
+  'nothing-to-fork': 'Rien à suggérer encore : envoie d’abord un prompt, puis appuie sur Start.',
+  'api-error': 'Suggestions indisponibles : erreur de l’API.',
+  'empty-reply': 'Suggestions indisponibles : réponse vide.',
+  aborted: 'Suggestions annulées.',
+}
+
 // Identifiant du tour en cours, pour que B puisse l'interrompre
 let turnId: string | undefined
 
@@ -73,7 +81,7 @@ async function runAction($: EngineInterface, action: Action, index = 0) {
   if (action === 'suggest') {
     const reply = await $.model.fork({ prompt: SUGGEST_PROMPT })
     if (!reply.isAnswered) {
-      await update($, status, s => ({ ...s, error: 'suggestions indisponibles : ' + reply.reason }))
+      await update($, status, s => ({ ...s, error: FORK_REASONS[reply.reason] ?? 'suggestions indisponibles' }))
       return
     }
     const suggestions = parseSuggestions(reply.text)
