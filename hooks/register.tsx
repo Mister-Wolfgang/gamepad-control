@@ -226,7 +226,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const { Box, Text } = $.ui.resolve(e)
     const s = await read($, status)
 
     return (
@@ -244,17 +244,13 @@ export const register: Register = on => {
             const item = s.suggestions[i]
             return (
               <Box key={key} flexDirection="row" gap={1}>
-                <Text bold color={PAD_COLORS[key]}>({key})</Text>
+                <Text bold inverse color={PAD_COLORS[key]}> {key} </Text>
                 <Box flexGrow={1}>
                   <Text dimColor={item === undefined}>{item ?? '—'}</Text>
                 </Box>
-                {item !== undefined && <Button onPress={() => runAction($, 'sendSuggestion', i)}>▶ Envoyer</Button>}
               </Box>
             )
           })}
-          <Box flexDirection="row" marginTop={1}>
-            <Button variant="primary" onPress={() => runAction($, 'suggest')}>✦ Suggérer (Back)</Button>
-          </Box>
         </Box>
 
         <Box flexDirection="column">
