@@ -51,9 +51,10 @@ while ($true) {
       $before = [int]$wasButtons[$i]
       foreach ($name in $buttons.Keys) {
         $mask = [int]$buttons[$name]
-        if ((($now -band $mask) -ne 0) -and (($before -band $mask) -eq 0)) {
-          $out.WriteLine('BTN ' + $name)
-        }
+        $was = (($before -band $mask) -ne 0)
+        $is = (($now -band $mask) -ne 0)
+        if ($is -and -not $was) { $out.WriteLine('DOWN ' + $name) }
+        if ($was -and -not $is) { $out.WriteLine('UP ' + $name) }
       }
       $wasButtons[$i] = $now
     } else {

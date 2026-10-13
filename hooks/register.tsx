@@ -17,17 +17,20 @@ const status = atom({ plugin: 'gamepad-control', key: 'status' } as const, {
   queue: [],
 } as PadStatus)
 
-type Action = 'send' | 'interrupt' | 'continue' | 'clear' | 'suggest' | 'accept' | 'runNext'
+type Action =
+  | 'pick'        // ajoute la suggestion à la file
+  | 'runNow'      // envoie la suggestion tout de suite
+  | 'runNext'     // envoie le premier de la file
+  | 'clearQueue'
+  | 'send'        // envoie le brouillon
+  | 'interrupt'
+  | 'suggest'     // demande trois ou quatre suggestions à la session
+  | 'continue'    // envoie « Continue. »
+  | 'clearDraft'
 
-// Touches XInput -> action de session
-const ACTIONS: Record<string, Action> = {
-  A: 'send',
-  B: 'interrupt',
-  X: 'continue',
-  Y: 'clear',
-  Start: 'suggest',
-  Back: 'runNext',
-}
+// Boutons XInput : ABXY pour les suggestions, LB et RB en modificateurs
+const SLOTS = ['A', 'B', 'X', 'Y'] as const
+const MODIFIERS = ['LB', 'RB'] as const
 
 // Couleurs des boutons Xbox, pour les repérer d'un coup d'œil
 const PAD_COLORS = { A: 'green', B: 'red', X: 'blue', Y: 'yellow' } as const
@@ -39,24 +42,50 @@ const KIND_LABELS: Record<PadKind, string> = {
   unknown: 'marque inconnue',
 }
 
-// Demande au modèle, dans la session en cours, trois actions possibles pour la suite
+// Demande au modèle, dans la session en cours, quatre actions possibles pour la suite
 const SUGGEST_PROMPT =
-  'En t’appuyant sur cette session, propose jusqu’à trois actions courtes et concrètes que ' +
+  'En t’appuyant sur cette session, propose jusqu’à quatre actions courtes et concrètes que ' +
   'l’utilisateur pourrait demander ensuite. Réponds uniquement par une liste : une action par ligne, ' +
   'chaque ligne commençant par « - ».'
 
 // Pourquoi $.model.fork ne répond pas, dit en clair dans le panneau
 const FORK_REASONS: Record<string, string> = {
-  'nothing-to-fork': 'Rien à suggérer encore : envoie d’abord un prompt, puis appuie sur Start.',
+  'nothing-to-fork': 'Rien à suggérer encore : envoie d’abord un prompt, puis appuie sur Back.',
   'api-error': 'Suggestions indisponibles : erreur de l’API.',
   'empty-reply': 'Suggestions indisponibles : réponse vide.',
   aborted: 'Suggestions annulées.',
 }
 
-// Identifiant du tour en cours, pour que B puisse l'interrompre
+// Identifiant du tour en cours, pour que LB+Start puisse l'interrompre
 let turnId: string | undefined
+// Boutons tenus en ce moment, et modificateurs ayant déjà servi à une combinaison
+const held = new Set<string>()
+const combined = new Set<string>()
 
 async function runAction($: EngineInterface, action: Action, index = 0) {
+  if (action === 'pick' || action === 'runNow') {
+    const s = await read($, status)
+    const item = s.suggestions[index]
+    if (item === undefined) return
+    if (action === 'pick') {
+      await update($, status, st => ({ ...st, queue: [...st.queue, item] }))
+    } else {
+      await $.prompt.submit({ text: item })
+    }
+    return
+  }
+  if (action === 'runNext') {
+    const s = await read($, status)
+    const [next, ...rest] = s.queue
+    if (next === undefined) return
+    await update($, status, st => ({ ...st, queue: rest }))
+    await $.prompt.submit({ text: next })
+    return
+  }
+  if (action === 'clearQueue') {
+    await update($, status, st => ({ ...st, queue: [] }))
+    return
+  }
   if (action === 'send') {
     const { text } = await $.prompt.read()
     if (text.trim() === '') return
@@ -66,10 +95,6 @@ async function runAction($: EngineInterface, action: Action, index = 0) {
   }
   if (action === 'interrupt') {
     if (turnId) await $.turn.abort({ turnId })
-    return
-  }
-  if (action === 'continue') {
-    await $.prompt.submit({ text: 'Continue.' })
     return
   }
   if (action === 'suggest') {
@@ -82,22 +107,60 @@ async function runAction($: EngineInterface, action: Action, index = 0) {
     await update($, status, s => ({ ...s, suggestions, error: '' }))
     return
   }
-  if (action === 'accept') {
-    const s = await read($, status)
-    const item = s.suggestions[index]
-    if (item === undefined) return
-    await update($, status, st => ({ ...st, queue: [...st.queue, item] }))
-    return
-  }
-  if (action === 'runNext') {
-    const s = await read($, status)
-    const [next, ...rest] = s.queue
-    if (next === undefined) return
-    await update($, status, st => ({ ...st, queue: rest }))
-    await $.prompt.submit({ text: next })
+  if (action === 'continue') {
+    await $.prompt.submit({ text: 'Continue.' })
     return
   }
   await $.prompt.fill({ text: '', mode: 'replace' })
+}
+
+// Action d'un bouton pressé seul (sans modificateur)
+function plainDown(name: string): { action: Action; index?: number } | undefined {
+  const slot = SLOTS.indexOf(name as (typeof SLOTS)[number])
+  if (slot !== -1) return { action: 'pick', index: slot }
+  if (name === 'Start') return { action: 'send' }
+  if (name === 'Back') return { action: 'suggest' }
+  return undefined
+}
+
+// Action d'un bouton pressé pendant qu'un modificateur (LB ou RB) est tenu
+function comboDown(modifier: string, name: string): { action: Action; index?: number } | undefined {
+  const slot = SLOTS.indexOf(name as (typeof SLOTS)[number])
+  if (modifier === 'LB') {
+    if (slot !== -1) return { action: 'runNow', index: slot }
+    if (name === 'Start') return { action: 'interrupt' }
+    if (name === 'Back') return { action: 'runNext' }
+  }
+  if (modifier === 'RB' && name === 'Start') return { action: 'clearQueue' }
+  return undefined
+}
+
+async function onDown($: EngineInterface, name: string) {
+  held.add(name)
+  if ((MODIFIERS as readonly string[]).includes(name)) return
+
+  const modifier = MODIFIERS.find(m => held.has(m))
+  if (modifier) {
+    const combo = comboDown(modifier, name)
+    if (combo) {
+      combined.add(modifier)
+      await runAction($, combo.action, combo.index)
+      return
+    }
+  }
+  const plain = plainDown(name)
+  if (plain) await runAction($, plain.action, plain.index)
+}
+
+async function onUp($: EngineInterface, name: string) {
+  held.delete(name)
+  if (!(MODIFIERS as readonly string[]).includes(name)) return
+  // Un modificateur relâché seul fait son action propre ; après une combinaison, rien
+  if (combined.has(name)) {
+    combined.delete(name)
+    return
+  }
+  await runAction($, name === 'LB' ? 'clearDraft' : 'continue')
 }
 
 async function handle($: EngineInterface, event: PadEvent) {
@@ -110,14 +173,21 @@ async function handle($: EngineInterface, event: PadEvent) {
     return
   }
   if (event.type === 'pad') {
+    if (!event.isUp) {
+      held.clear()
+      combined.clear()
+    }
     await update($, status, s => ({ ...s, connected: event.isUp }))
     $.ui.toast(event.isUp ? 'Manette connectée' : 'Manette déconnectée')
     return
   }
-  if (event.type === 'button') {
+  if (event.type === 'down') {
     await update($, status, s => ({ ...s, last: event.name }))
-    const action = ACTIONS[event.name]
-    if (action) await runAction($, action)
+    await onDown($, event.name)
+    return
+  }
+  if (event.type === 'up') {
+    await onUp($, event.name)
     return
   }
   if (event.type === 'error') {
@@ -187,47 +257,30 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" paddingX={1} gap={1}>
-        <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
-          <Box flexDirection="row" justifyContent="space-between">
-            <Text bold color="cyan">◆ Manette</Text>
-            <Text color={s.connected ? 'green' : 'gray'}>{s.connected ? '● connectée' : '○ aucune'}</Text>
-          </Box>
-          <Text dimColor>{KIND_LABELS[s.kind]}</Text>
-          <Box flexDirection="row" gap={2}>
-            {(['A', 'B', 'X', 'Y'] as const).map(key => (
-              <Text key={key} bold color={PAD_COLORS[key]}>({key})</Text>
-            ))}
-            <Text dimColor>{s.last ? 'dernier : ' + s.last : ''}</Text>
-          </Box>
-          {s.devices.map((name, i) => (
-            <Text key={i} dimColor>{name}</Text>
-          ))}
-          {s.error !== '' && <Text color="red">{s.error}</Text>}
+        <Box flexDirection="row" justifyContent="space-between">
+          <Text bold color="cyan">◆ Manette</Text>
+          <Text color={s.connected ? 'green' : 'gray'}>{s.connected ? '● connectée' : '○ aucune'}</Text>
         </Box>
-
-        <Box flexDirection="column" gap={1}>
-          <Box flexDirection="row" gap={2}>
-            <Button variant="primary" onPress={() => runAction($, 'send')}>▶ Envoyer (A)</Button>
-            <Button onPress={() => runAction($, 'interrupt')}>■ Interrompre (B)</Button>
-          </Box>
-          <Box flexDirection="row" gap={2}>
-            <Button onPress={() => runAction($, 'continue')}>↻ Continuer (X)</Button>
-            <Button onPress={() => runAction($, 'clear')}>✕ Vider (Y)</Button>
-          </Box>
-        </Box>
+        <Text dimColor>{KIND_LABELS[s.kind]}{s.last ? ' · dernier : ' + s.last : ''}</Text>
+        {s.error !== '' && <Text color="red">{s.error}</Text>}
 
         <Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1}>
           <Text bold color="magenta">✦ Suggestions</Text>
-          {s.suggestions.length === 0 && <Text dimColor>Aucune pour l’instant.</Text>}
-          {s.suggestions.map((item, i) => (
-            <Box key={i} flexDirection="row" justifyContent="space-between" gap={2}>
-              <Text>▸ {item}</Text>
-              <Button onPress={() => runAction($, 'accept', i)}>+ File</Button>
-            </Box>
-          ))}
-          <Box flexDirection="row" gap={2}>
-            <Button onPress={() => runAction($, 'suggest')}>✦ Suggérer (Start)</Button>
-            <Button onPress={() => runAction($, 'runNext')}>➜ Suivant (Back)</Button>
+          {SLOTS.map((key, i) => {
+            const item = s.suggestions[i]
+            return (
+              <Box key={key} flexDirection="row" gap={1}>
+                <Text bold color={PAD_COLORS[key]}>({key})</Text>
+                <Box flexGrow={1}>
+                  <Text dimColor={item === undefined}>{item ?? '—'}</Text>
+                </Box>
+                {item !== undefined && <Button onPress={() => runAction($, 'pick', i)}>+ File</Button>}
+                {item !== undefined && <Button onPress={() => runAction($, 'runNow', i)}>▶ Lancer</Button>}
+              </Box>
+            )
+          })}
+          <Box flexDirection="row" marginTop={1}>
+            <Button variant="primary" onPress={() => runAction($, 'suggest')}>✦ Suggérer (Back)</Button>
           </Box>
         </Box>
 
@@ -237,6 +290,16 @@ export const register: Register = on => {
           {s.queue.map((item, i) => (
             <Text key={i}>{i + 1}. {item}</Text>
           ))}
+          {s.queue.length > 0 && (
+            <Box flexDirection="row" marginTop={1}>
+              <Button onPress={() => runAction($, 'runNext')}>➜ Lancer le suivant (LB+Back)</Button>
+            </Box>
+          )}
+        </Box>
+
+        <Box flexDirection="column">
+          <Text dimColor>ABXY ajouter · LB+ABXY lancer · Start envoyer · LB+Start interrompre</Text>
+          <Text dimColor>Back suggérer · LB+Back lancer la file · RB Continue. · RB+Start vider la file · LB vider le brouillon</Text>
         </Box>
       </Box>
     )

@@ -2,7 +2,8 @@
 //   READY
 //   DEVICE <xbox|sony|nintendo|unknown> <nom>
 //   PAD <index> <up|down>
-//   BTN <nom>
+//   DOWN <nom>      un bouton vient d'être pressé
+//   UP <nom>        un bouton vient d'être relâché
 //   ERROR <message>
 
 export type PadKind = 'xbox' | 'sony' | 'nintendo' | 'unknown'
@@ -11,7 +12,8 @@ export type PadEvent =
   | { type: 'ready' }
   | { type: 'device'; kind: PadKind; name: string }
   | { type: 'pad'; index: number; isUp: boolean }
-  | { type: 'button'; name: string }
+  | { type: 'down'; name: string }
+  | { type: 'up'; name: string }
   | { type: 'error'; message: string }
 
 const KINDS: readonly string[] = ['xbox', 'sony', 'nintendo']
@@ -40,8 +42,10 @@ export function parseLine(line: string): PadEvent | undefined {
       if (!Number.isInteger(position) || (state !== 'up' && state !== 'down')) return undefined
       return { type: 'pad', index: position, isUp: state === 'up' }
     }
-    case 'BTN':
-      return rest ? { type: 'button', name: rest } : undefined
+    case 'DOWN':
+      return rest ? { type: 'down', name: rest } : undefined
+    case 'UP':
+      return rest ? { type: 'up', name: rest } : undefined
     case 'ERROR':
       return { type: 'error', message: rest }
     default:
@@ -49,7 +53,7 @@ export function parseLine(line: string): PadEvent | undefined {
   }
 }
 
-// Lit la réponse du modèle : une suggestion par ligne commençant par « - », trois au plus
+// Lit la réponse du modèle : une suggestion par ligne commençant par « - », quatre au plus (une par bouton ABXY)
 export function parseSuggestions(text: string): string[] {
   return text
     .split('\n')
@@ -57,7 +61,7 @@ export function parseSuggestions(text: string): string[] {
     .filter(line => line.startsWith('- '))
     .map(line => line.slice(2).trim())
     .filter(line => line !== '')
-    .slice(0, 3)
+    .slice(0, 4)
 }
 
 // Découpe un flux de morceaux en lignes complètes ; le reste attend le morceau suivant
