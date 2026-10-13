@@ -29,20 +29,14 @@ const ACTIONS: Record<string, Action> = {
   Back: 'runNext',
 }
 
-const LABELS: Record<string, string> = {
-  send: 'envoyer le brouillon',
-  interrupt: 'interrompre le tour',
-  continue: 'envoyer « Continue. »',
-  clear: 'vider le brouillon',
-  suggest: 'suggérer d’après la session',
-  runNext: 'lancer le premier de la file',
-}
+// Couleurs des boutons Xbox, pour les repérer d'un coup d'œil
+const PAD_COLORS = { A: 'green', B: 'red', X: 'blue', Y: 'yellow' } as const
 
 const KIND_LABELS: Record<PadKind, string> = {
   xbox: 'Xbox (XInput)',
-  sony: 'PlayStation (boutons lus via XInput, par Steam Input ou DS4Windows)',
-  nintendo: 'Nintendo (boutons lus via XInput, par Steam Input)',
-  unknown: 'inconnue',
+  sony: 'PlayStation (boutons lus via XInput : Steam Input ou DS4Windows)',
+  nintendo: 'Nintendo (boutons lus via XInput : Steam Input)',
+  unknown: 'marque inconnue',
 }
 
 // Demande au modèle, dans la session en cours, trois actions possibles pour la suite
@@ -81,7 +75,7 @@ async function runAction($: EngineInterface, action: Action, index = 0) {
   if (action === 'suggest') {
     const reply = await $.model.fork({ prompt: SUGGEST_PROMPT })
     if (!reply.isAnswered) {
-      await update($, status, s => ({ ...s, error: FORK_REASONS[reply.reason] ?? 'suggestions indisponibles' }))
+      await update($, status, s => ({ ...s, error: FORK_REASONS[reply.reason] ?? 'Suggestions indisponibles.' }))
       return
     }
     const suggestions = parseSuggestions(reply.text)
@@ -192,43 +186,58 @@ export const register: Register = on => {
     const s = await read($, status)
 
     return (
-      <Box flexDirection="column">
-        <Text bold>Manette : {KIND_LABELS[s.kind]}</Text>
-        <Text>{s.connected ? 'Connectée' : 'Aucune manette active'}</Text>
-        <Text dimColor>Dernière touche : {s.last || '—'}</Text>
-        {s.devices.map((name, i) => (
-          <Text key={i} dimColor>Détectée : {name}</Text>
-        ))}
-        {s.error !== '' && <Text>{s.error}</Text>}
-        <Text bold>Touches</Text>
-        <Text>A  envoyer le brouillon</Text>
-        <Text>B  interrompre le tour</Text>
-        <Text>X  envoyer « Continue. »</Text>
-        <Text>Y  vider le brouillon</Text>
-        <Text>Start  {LABELS.suggest}</Text>
-        <Text>Back  {LABELS.runNext}</Text>
-        <Box flexDirection="row">
-          <Button onPress={() => runAction($, 'send')}>A envoyer</Button>
-          <Button onPress={() => runAction($, 'interrupt')}>B interrompre</Button>
-          <Button onPress={() => runAction($, 'continue')}>X continuer</Button>
-          <Button onPress={() => runAction($, 'clear')}>Y vider</Button>
-        </Box>
-        <Text bold>Suggestions</Text>
-        {s.suggestions.length === 0 && <Text dimColor>Aucune. Appuie sur Start ou sur le bouton ci-dessous.</Text>}
-        {s.suggestions.map((item, i) => (
-          <Box key={i} flexDirection="row">
-            <Text>{item}</Text>
-            <Button onPress={() => runAction($, 'accept', i)}>Ajouter à la file</Button>
+      <Box flexDirection="column" paddingX={1} gap={1}>
+        <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
+          <Box flexDirection="row" justifyContent="space-between">
+            <Text bold color="cyan">◆ Manette</Text>
+            <Text color={s.connected ? 'green' : 'gray'}>{s.connected ? '● connectée' : '○ aucune'}</Text>
           </Box>
-        ))}
-        <Box flexDirection="row">
-          <Button onPress={() => runAction($, 'suggest')}>Start suggérer</Button>
-          <Button onPress={() => runAction($, 'runNext')}>Back lancer le suivant</Button>
+          <Text dimColor>{KIND_LABELS[s.kind]}</Text>
+          <Box flexDirection="row" gap={2}>
+            {(['A', 'B', 'X', 'Y'] as const).map(key => (
+              <Text key={key} bold color={PAD_COLORS[key]}>({key})</Text>
+            ))}
+            <Text dimColor>{s.last ? 'dernier : ' + s.last : ''}</Text>
+          </Box>
+          {s.devices.map((name, i) => (
+            <Text key={i} dimColor>{name}</Text>
+          ))}
+          {s.error !== '' && <Text color="red">{s.error}</Text>}
         </Box>
-        <Text bold>File ({s.queue.length})</Text>
-        {s.queue.map((item, i) => (
-          <Text key={i}>{i + 1}. {item}</Text>
-        ))}
+
+        <Box flexDirection="column" gap={1}>
+          <Box flexDirection="row" gap={2}>
+            <Button variant="primary" onPress={() => runAction($, 'send')}>▶ Envoyer (A)</Button>
+            <Button onPress={() => runAction($, 'interrupt')}>■ Interrompre (B)</Button>
+          </Box>
+          <Box flexDirection="row" gap={2}>
+            <Button onPress={() => runAction($, 'continue')}>↻ Continuer (X)</Button>
+            <Button onPress={() => runAction($, 'clear')}>✕ Vider (Y)</Button>
+          </Box>
+        </Box>
+
+        <Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1}>
+          <Text bold color="magenta">✦ Suggestions</Text>
+          {s.suggestions.length === 0 && <Text dimColor>Aucune pour l’instant.</Text>}
+          {s.suggestions.map((item, i) => (
+            <Box key={i} flexDirection="row" justifyContent="space-between" gap={2}>
+              <Text>▸ {item}</Text>
+              <Button onPress={() => runAction($, 'accept', i)}>+ File</Button>
+            </Box>
+          ))}
+          <Box flexDirection="row" gap={2}>
+            <Button onPress={() => runAction($, 'suggest')}>✦ Suggérer (Start)</Button>
+            <Button onPress={() => runAction($, 'runNext')}>➜ Suivant (Back)</Button>
+          </Box>
+        </Box>
+
+        <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+          <Text bold>File ({s.queue.length})</Text>
+          {s.queue.length === 0 && <Text dimColor>Vide.</Text>}
+          {s.queue.map((item, i) => (
+            <Text key={i}>{i + 1}. {item}</Text>
+          ))}
+        </Box>
       </Box>
     )
   })
