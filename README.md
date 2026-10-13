@@ -14,6 +14,12 @@ Mod pour Claude Code qui pilote une session à la manette et affiche les touches
 | B | Interrompt le tour en cours |
 | X | Envoie « Continue. » |
 | Y | Vide le brouillon |
+| Start | Demande au modèle trois actions possibles, d'après la session en cours |
+| Back | Lance le premier élément de la file |
+
+Les suggestions se choisissent dans le panneau (« Ajouter à la file ») et s'enchaînent une à une.
+
+**Coût** : Start envoie le transcript de la session au modèle (`$.model.fork`). Chaque appel consomme des tokens, sur le modèle de la session.
 
 ## Limites
 
