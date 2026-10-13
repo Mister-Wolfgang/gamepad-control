@@ -54,6 +54,8 @@ claude plugin test .
 
 Le parseur du protocole du helper (`hooks/parse.ts`) est couvert par `hooks/parse.test.ts`. Le helper écrit des lignes texte sur sa sortie standard : `READY`, `DEVICE <marque> <nom>`, `PAD <index> <up|down>`, `BTN <nom>`, `ERROR <message>`.
 
+Les icônes des boutons viennent du pack [Input Prompts](https://kenney.nl) de Kenney, sous licence CC0 (`assets/kenney-input-prompts/`). Elles sont converties en cases de terminal par `scripts/make-icons.ps1`, qui régénère `hooks/icons.ts`.
+
 ## Licence
 
-MIT, voir [LICENSE](LICENSE).
+MIT, voir [LICENSE](LICENSE). Les icônes sont sous CC0, voir `assets/kenney-input-prompts/LICENSE.txt`.

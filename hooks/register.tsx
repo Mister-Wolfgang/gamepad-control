@@ -3,6 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { PadStatus } from '../types'
 import { encodedCommand, HELPER_SCRIPT } from './helper'
+import { ICONS } from './icons'
 import { parseLine, parseSuggestions, splitLines, type PadEvent, type PadKind } from './parse'
 
 const PANE = 'gamepad-control'
@@ -28,15 +29,28 @@ type Action =
 const SLOTS = ['A', 'B', 'X', 'Y'] as const
 const MODIFIERS = ['LB', 'RB'] as const
 
-// Couleurs des boutons Xbox, pour les repérer d'un coup d'œil
-const PAD_COLORS = { A: 'green', B: 'red', X: 'blue', Y: 'yellow' } as const
-
 const KIND_LABELS: Record<PadKind, string> = {
   xbox: 'Xbox (XInput)',
   sony: 'PlayStation (boutons lus via XInput : Steam Input ou DS4Windows)',
   nintendo: 'Nintendo (boutons lus via XInput : Steam Input)',
   unknown: 'marque inconnue',
 }
+
+// Icônes ABXY, indexées par la lettre du bouton (le module les range en minuscules)
+const PAD_ICON = {
+  A: ICONS.a,
+  B: ICONS.b,
+  X: ICONS.x,
+  Y: ICONS.y,
+} as const
+
+// Légende des boutons non ABXY, avec leur icône
+const LEGEND = [
+  ['start', 'envoyer'],
+  ['back', 'suggérer'],
+  ['rb', 'Continue.'],
+  ['lb', 'vider'],
+] as const
 
 // Demande au modèle, dans la session en cours, quatre actions possibles pour la suite
 const SUGGEST_PROMPT =
@@ -226,7 +240,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Text, Raster } = $.ui.resolve(e)
     const s = await read($, status)
 
     return (
@@ -243,8 +257,8 @@ export const register: Register = on => {
           {SLOTS.map((key, i) => {
             const item = s.suggestions[i]
             return (
-              <Box key={key} flexDirection="row" gap={1}>
-                <Text bold inverse color={PAD_COLORS[key]}> {key} </Text>
+              <Box key={key} flexDirection="row" gap={1} alignItems="center">
+                <Raster key={`pad-${key}`} columns={PAD_ICON[key].columns} rows={PAD_ICON[key].rows} cells={PAD_ICON[key].cells} />
                 <Box flexGrow={1}>
                   <Text dimColor={item === undefined}>{item ?? '—'}</Text>
                 </Box>
@@ -253,10 +267,15 @@ export const register: Register = on => {
           })}
         </Box>
 
-        <Box flexDirection="column">
-          <Text dimColor>ABXY envoyer la suggestion · Back suggérer · Start envoyer le brouillon</Text>
-          <Text dimColor>LB+Start interrompre · RB « Continue. » · LB seul vider le brouillon</Text>
+        <Box flexDirection="row" gap={3}>
+          {LEGEND.map(([icon, label]) => (
+            <Box key={icon} flexDirection="row" gap={1} alignItems="center">
+              <Raster key={`legend-${icon}`} columns={ICONS[icon].columns} rows={ICONS[icon].rows} cells={ICONS[icon].cells} />
+              <Text dimColor>{label}</Text>
+            </Box>
+          ))}
         </Box>
+        <Text dimColor>LB + Start interrompre</Text>
       </Box>
     )
   })
